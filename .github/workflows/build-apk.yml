@@ -1,12 +1,10 @@
-name: Build Quranak v6 Android APK
+name: Build Quranak v8 Android APK
 
 on:
   push:
     branches: [main]
     paths:
-      - 'Quranak_Complete_App_v6 (1).zip'
-      - 'images.zip'
-      - 'adhan.mp3'
+      - 'Quranak_Complete_App_v8 (1).zip'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -14,16 +12,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: quranaka-v6-apk-${{ github.ref }}
+  group: quranaka-v8-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Prepare, analyze and build Quranak v6
+    name: Prepare, analyze and build Quranak v8
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Checkout source repository
+      - name: Checkout v8 source
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -39,133 +37,126 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Restore v6 source and complete Android project
+      - name: Restore v8 source and generate Android Gradle project
         shell: bash
         run: |
           set -euo pipefail
-          WORK="$RUNNER_TEMP/quranak-v6"
+          WORK="$RUNNER_TEMP/quranak-v8"
           mkdir -p "$WORK"
-          unzip -q "Quranak_Complete_App_v6 (1).zip" -d "$WORK"
-          PROJECT="$WORK/Quranak_Complete_App_v6/quranak_flutter_app"
+          unzip -q "Quranak_Complete_App_v8 (1).zip" -d "$WORK"
+          PROJECT="$WORK/Quranak_Complete_App_v8/quranak_flutter_app"
 
           test -s "$PROJECT/pubspec.yaml"
           test -s "$PROJECT/lib/main.dart"
           test -s "$PROJECT/android/app/google-services.json"
           test -s "$PROJECT/android/app/src/main/AndroidManifest.xml"
           test -s "$PROJECT/assets/audio/adhan.mp3"
-          test -s "images.zip"
+          test -s "$PROJECT/android/app/src/main/res/raw/adhan.mp3"
 
-          mkdir -p "$PROJECT/assets/images"
-          unzip -oq images.zip -d "$PROJECT/assets/images"
-          mkdir -p "$PROJECT/android/app/src/main/res/raw"
-          cp "$PROJECT/assets/audio/adhan.mp3" "$PROJECT/android/app/src/main/res/raw/adhan.mp3"
-
-          # Preserve the exact v6 application source and manifest while generating missing Gradle scaffolding.
+          # Save the exact v8 source/configuration before Flutter generates missing Gradle files.
           cp "$PROJECT/lib/main.dart" "$WORK/main.dart"
           cp "$PROJECT/pubspec.yaml" "$WORK/pubspec.yaml"
           cp "$PROJECT/android/app/src/main/AndroidManifest.xml" "$WORK/AndroidManifest.xml"
           cp "$PROJECT/android/app/google-services.json" "$WORK/google-services.json"
+          cp "$PROJECT/android/app/src/main/res/raw/adhan.mp3" "$WORK/adhan.mp3"
+
           cd "$PROJECT"
           flutter create --platforms=android --org com.quranak --project-name app --overwrite .
           cp "$WORK/main.dart" lib/main.dart
           cp "$WORK/pubspec.yaml" pubspec.yaml
           cp "$WORK/AndroidManifest.xml" android/app/src/main/AndroidManifest.xml
           cp "$WORK/google-services.json" android/app/google-services.json
-          rm -rf test
-
+          mkdir -p android/app/src/main/res/raw assets/images
+          cp "$WORK/adhan.mp3" android/app/src/main/res/raw/adhan.mp3
+          # v8 archive has no image files although pubspec declares this directory.
           python3 - <<'PY'
           from pathlib import Path
-          import re
+          import base64, re
+          image_dir = Path("assets/images")
+          image_dir.mkdir(parents=True, exist_ok=True)
+          # A valid 1x1 transparent PNG keeps the declared asset directory present.
+          (image_dir / "build_placeholder.png").write_bytes(base64.b64decode(
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII="
+          ))
 
-          # The v6 source used the initialization class for notification display details.
           dart = Path("lib/main.dart")
           source = dart.read_text(encoding="utf-8")
-          bad_name = "DarwinInitializationDetails("
-          occurrences = source.count(bad_name)
-          if occurrences != 3:
-              raise SystemExit(f"Expected 3 outdated Darwin notification constructors, found {occurrences}.")
-          source = source.replace(bad_name, "DarwinNotificationDetails(")
+          # These are display-notification details, not initialization settings.
+          bad = "DarwinInitializationDetails()"
+          if source.count(bad) != 2:
+              raise SystemExit(f"Expected 2 invalid Darwin display-detail constructors; found {source.count(bad)}.")
+          source = source.replace(bad, "DarwinNotificationDetails()")
           dart.write_text(source, encoding="utf-8")
 
           settings = Path("android/settings.gradle")
           app = Path("android/app/build.gradle")
           if not settings.is_file() or not app.is_file():
-              raise SystemExit("Flutter Android Gradle scaffold was not generated.")
+              raise SystemExit("Flutter did not generate the Android Gradle files.")
 
           s = settings.read_text()
           if "com.google.gms.google-services" not in s:
-              marker = re.search(r'(?m)^\s*id "org\.jetbrains\.kotlin\.android" version "[^"]+" apply false\s*$', s)
+              marker = re.search(r'(?m)^\\s*id "org\\.jetbrains\\.kotlin\\.android" version "[^"]+" apply false\\s*$', s)
               if not marker:
-                  raise SystemExit("Kotlin Gradle plugin declaration not found.")
-              s = s[:marker.end()] + '\n    id "com.google.gms.google-services" version "4.4.2" apply false' + s[marker.end():]
+                  raise SystemExit("Could not find the Kotlin Gradle plugin declaration.")
+              s = s[:marker.end()] + '\\n    id "com.google.gms.google-services" version "4.4.2" apply false' + s[marker.end():]
           settings.write_text(s)
 
           a = app.read_text()
           if 'id "com.google.gms.google-services"' not in a:
               a = a.replace('id "dev.flutter.flutter-gradle-plugin"',
-                            'id "dev.flutter.flutter-gradle-plugin"\n    id "com.google.gms.google-services"')
+                            'id "dev.flutter.flutter-gradle-plugin"\\n    id "com.google.gms.google-services"')
           if "coreLibraryDesugaringEnabled true" not in a:
-              a = a.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true")
+              a = a.replace("compileOptions {", "compileOptions {\\n        coreLibraryDesugaringEnabled true")
           if "coreLibraryDesugaring " not in a:
-              a += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\n}\n"
+              a += "\\ndependencies {\\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\\n}\\n"
 
-          # Force the exact Firebase Android package, regardless of Flutter template syntax.
-          a, count = re.subn(r'(?m)^\s*applicationId\s*(?:=\s*)?["\x27][^"\x27]+["\x27]',
+          a, count = re.subn(r'(?m)^\\s*applicationId\\s*(?:=\\s*)?["\\x27][^"\\x27]+["\\x27]',
                              '        applicationId "com.quranak.app"', a, count=1)
           if count != 1:
-              raise SystemExit("Could not locate applicationId in generated app/build.gradle.")
-          a, ns_count = re.subn(r'(?m)^\s*namespace\s*(?:=\s*)?["\x27][^"\x27]+["\x27]',
+              raise SystemExit("Could not set Android applicationId.")
+          a, ns_count = re.subn(r'(?m)^\\s*namespace\\s*(?:=\\s*)?["\\x27][^"\\x27]+["\\x27]',
                                 '    namespace "com.quranak.app"', a, count=1)
           if ns_count == 0:
-              a = a.replace('android {', 'android {\n    namespace "com.quranak.app"', 1)
+              a = a.replace("android {", 'android {\\n    namespace "com.quranak.app"', 1)
+
+          # Android Alarm Manager and current notification plugins require a modern Android baseline.
+          a = re.sub(r'minSdkVersion\\s+flutter\\.minSdkVersion', 'minSdkVersion 23', a)
           app.write_text(a)
 
-          if not re.search(r'(?m)^\s*applicationId\s*(?:=\s*)?["\x27]com\.quranak\.app["\x27]', a):
-              raise SystemExit("Android applicationId does not match Firebase package com.quranak.app.")
+          if "applicationId \\"com.quranak.app\\"" not in a:
+              raise SystemExit("Android package ID does not match the Firebase package.")
           PY
+          rm -rf test
+          echo "v8 source restored and Android project generated."
 
-          echo "Project prepared:"
-          find assets -maxdepth 3 -type f | sort | head -80
-          echo "Android manifest and Firebase configuration restored."
-
-      - name: Resolve Flutter dependencies
-        working-directory: ${{ runner.temp }}/quranak-v6/Quranak_Complete_App_v6/quranak_flutter_app
+      - name: Resolve dependencies
+        working-directory: ${{ runner.temp }}/quranak-v8/Quranak_Complete_App_v8/quranak_flutter_app
         run: flutter pub get
 
       - name: Analyze Dart source
-        working-directory: ${{ runner.temp }}/quranak-v6/Quranak_Complete_App_v6/quranak_flutter_app
+        working-directory: ${{ runner.temp }}/quranak-v8/Quranak_Complete_App_v8/quranak_flutter_app
         run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
-        working-directory: ${{ runner.temp }}/quranak-v6/Quranak_Complete_App_v6/quranak_flutter_app
+        working-directory: ${{ runner.temp }}/quranak-v8/Quranak_Complete_App_v8/quranak_flutter_app
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if flutter build apk --release; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            echo "Build attempt $attempt failed; retrying after a short pause."
-            sleep 20
-          done
+          flutter build apk --release
 
       - name: Verify APK output
-        working-directory: ${{ runner.temp }}/quranak-v6/Quranak_Complete_App_v6/quranak_flutter_app
+        working-directory: ${{ runner.temp }}/quranak-v8/Quranak_Complete_App_v8/quranak_flutter_app
         run: |
           set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
-          file "$APK"
           unzip -t "$APK" >/dev/null
           sha256sum "$APK"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Quranak-v6-release-apk
-          path: ${{ runner.temp }}/quranak-v6/Quranak_Complete_App_v6/quranak_flutter_app/build/app/outputs/flutter-apk/app-release.apk
+          name: Quranak-v8-release-apk
+          path: ${{ runner.temp }}/quranak-v8/Quranak_Complete_App_v8/quranak_flutter_app/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
