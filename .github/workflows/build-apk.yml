@@ -95,35 +95,35 @@ jobs:
 
           s = settings.read_text()
           if "com.google.gms.google-services" not in s:
-              marker = re.search(r'(?m)^\\s*id "org\\.jetbrains\\.kotlin\\.android" version "[^"]+" apply false\\s*$', s)
+              marker = re.search(r'(?m)^\s*id "org\.jetbrains\.kotlin\.android" version "[^"]+" apply false\s*$', s)
               if not marker:
                   raise SystemExit("Could not find the Kotlin Gradle plugin declaration.")
-              s = s[:marker.end()] + '\\n    id "com.google.gms.google-services" version "4.4.2" apply false' + s[marker.end():]
+              s = s[:marker.end()] + '\n    id "com.google.gms.google-services" version "4.4.2" apply false' + s[marker.end():]
           settings.write_text(s)
 
           a = app.read_text()
           if 'id "com.google.gms.google-services"' not in a:
               a = a.replace('id "dev.flutter.flutter-gradle-plugin"',
-                            'id "dev.flutter.flutter-gradle-plugin"\\n    id "com.google.gms.google-services"')
+                            'id "dev.flutter.flutter-gradle-plugin"\n    id "com.google.gms.google-services"')
           if "coreLibraryDesugaringEnabled true" not in a:
-              a = a.replace("compileOptions {", "compileOptions {\\n        coreLibraryDesugaringEnabled true")
+              a = a.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true")
           if "coreLibraryDesugaring " not in a:
-              a += "\\ndependencies {\\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\\n}\\n"
+              a += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\n}\n"
 
-          a, count = re.subn(r'(?m)^\\s*applicationId\\s*(?:=\\s*)?["\\x27][^"\\x27]+["\\x27]',
+          a, count = re.subn(r'(?m)^\s*applicationId\s*(?:=\s*)?["\x27][^"\x27]+["\x27]',
                              '        applicationId "com.quranak.app"', a, count=1)
           if count != 1:
               raise SystemExit("Could not set Android applicationId.")
-          a, ns_count = re.subn(r'(?m)^\\s*namespace\\s*(?:=\\s*)?["\\x27][^"\\x27]+["\\x27]',
+          a, ns_count = re.subn(r'(?m)^\s*namespace\s*(?:=\s*)?["\x27][^"\x27]+["\x27]',
                                 '    namespace "com.quranak.app"', a, count=1)
           if ns_count == 0:
-              a = a.replace("android {", 'android {\\n    namespace "com.quranak.app"', 1)
+              a = a.replace("android {", 'android {\n    namespace "com.quranak.app"', 1)
 
           # Android Alarm Manager and current notification plugins require a modern Android baseline.
-          a = re.sub(r'minSdkVersion\\s+flutter\\.minSdkVersion', 'minSdkVersion 23', a)
+          a = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 23', a)
           app.write_text(a)
 
-          if "applicationId \\"com.quranak.app\\"" not in a:
+          if 'applicationId "com.quranak.app"' not in a:
               raise SystemExit("Android package ID does not match the Firebase package.")
           PY
           rm -rf test
