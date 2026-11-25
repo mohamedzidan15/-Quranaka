@@ -97,11 +97,20 @@ jobs:
               a = a.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true")
           if "coreLibraryDesugaring " not in a:
               a += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'\n}\n"
+
+          # Force the exact Firebase Android package, regardless of Flutter template syntax.
+          a, count = re.subn(r'(?m)^\\s*applicationId\\s*(?:=\\s*)?["\\'][^"\\']+["\\']',
+                             '        applicationId "com.quranak.app"', a, count=1)
+          if count != 1:
+              raise SystemExit("Could not locate applicationId in generated app/build.gradle.")
+          a, ns_count = re.subn(r'(?m)^\\s*namespace\\s*(?:=\\s*)?["\\'][^"\\']+["\\']',
+                                '    namespace "com.quranak.app"', a, count=1)
+          if ns_count == 0:
+              a = a.replace('android {', 'android {\\n    namespace "com.quranak.app"', 1)
           app.write_text(a)
 
-          # Verify the Android application ID matches the Firebase client package.
-          if 'applicationId "com.quranak.app"' not in a:
-              raise SystemExit("Generated Android applicationId is not com.quranak.app.")
+          if not re.search(r'(?m)^\\s*applicationId\\s*(?:=\\s*)?["\\']com\\.quranak\\.app["\\']', a):
+              raise SystemExit("Android applicationId does not match Firebase package com.quranak.app.")
           PY
 
           echo "Project prepared:"
