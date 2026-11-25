@@ -82,10 +82,10 @@ jobs:
           dart = Path("lib/main.dart")
           source = dart.read_text(encoding="utf-8")
           # These are display-notification details, not initialization settings.
-          bad = "DarwinInitializationDetails()"
+          bad = "DarwinInitializationDetails"
           if source.count(bad) != 2:
               raise SystemExit(f"Expected 2 invalid Darwin display-detail constructors; found {source.count(bad)}.")
-          source = source.replace(bad, "DarwinNotificationDetails()")
+          source = source.replace(bad, "DarwinNotificationDetails")
           dart.write_text(source, encoding="utf-8")
 
           settings = Path("android/settings.gradle")
