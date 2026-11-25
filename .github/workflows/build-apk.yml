@@ -71,10 +71,21 @@ jobs:
           cp "$WORK/pubspec.yaml" pubspec.yaml
           cp "$WORK/AndroidManifest.xml" android/app/src/main/AndroidManifest.xml
           cp "$WORK/google-services.json" android/app/google-services.json
+          rm -rf test
 
           python3 - <<'PY'
           from pathlib import Path
           import re
+
+          # The v6 source used the initialization class for notification display details.
+          dart = Path("lib/main.dart")
+          source = dart.read_text(encoding="utf-8")
+          bad_name = "DarwinInitializationDetails("
+          occurrences = source.count(bad_name)
+          if occurrences != 3:
+              raise SystemExit(f"Expected 3 outdated Darwin notification constructors, found {occurrences}.")
+          source = source.replace(bad_name, "DarwinNotificationDetails(")
+          dart.write_text(source, encoding="utf-8")
 
           settings = Path("android/settings.gradle")
           app = Path("android/app/build.gradle")
